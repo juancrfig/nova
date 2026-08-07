@@ -2,7 +2,9 @@
 
 A Pi extension (Nova's "quiet terminal"): while an agent run is active it swaps the status label
 between **`Thinking`** (model generating) and **`Working`** (tool executing), keeping **Pi's default
-spinner** as the animated indicator instead of a custom one. Purely presentational; it never touches
+spinner** as the animated indicator instead of a custom one. It also silences Pi's italic
+`Thinking...` placeholder (shown when `hideThinkingBlock` is on) so it doesn't duplicate the spinner
+label. Purely presentational; it never touches
 the session, model context, or capture logging, so observability is unaffected.
 
 ## Install

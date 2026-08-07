@@ -5,6 +5,8 @@
  *  - shows the default spinner on "Thinking" while the model is generating, and
  *    on "Working" while a tool is executing
  *  - the label swaps in-place; Pi's built-in spinner provides the animation
+ *  - silences Pi's italic "Thinking..." placeholder (from hideThinkingBlock) so
+ *    it doesn't duplicate the spinner's "Thinking"
  *
  * This is purely presentational: it only changes what the terminal shows. It
  * does not touch the session, model context, or capture logging, so
@@ -24,6 +26,12 @@ const LABEL: Record<ActivePhase, string> = {
 	thinking: "Thinking",
 	working: "Working",
 };
+
+// With hideThinkingBlock enabled Pi renders an italic placeholder where the
+// reasoning was. Default is "Thinking...". Our status spinner already reads
+// "Thinking", so leave this empty to avoid a duplicate. Set it to e.g.
+// "·", "…", or "(reasoning hidden)" if you want a marker instead.
+const HIDDEN_THINKING_LABEL = "";
 
 function apply(ctx: ExtensionContext, phase: Phase): void {
 	if (phase === "idle") {
@@ -50,10 +58,14 @@ export default function (pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		phase = "idle";
 		runningTools = 0;
+		ctx.ui.setHiddenThinkingLabel(HIDDEN_THINKING_LABEL);
 	});
 
 	// User submitted a prompt: the model is about to reason.
-	pi.on("before_agent_start", async (_event, ctx) => setPhase(ctx, "thinking"));
+	pi.on("before_agent_start", async (_event, ctx) => {
+		ctx.ui.setHiddenThinkingLabel(HIDDEN_THINKING_LABEL);
+		setPhase(ctx, "thinking");
+	});
 
 	// A tool started executing: we're "working".
 	pi.on("tool_execution_start", async (_event, ctx) => {
