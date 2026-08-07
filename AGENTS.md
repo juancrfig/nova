@@ -16,6 +16,8 @@ nova/
 ├── README.md            # orientation: what Nova is, current state, how to run things
 ├── LICENSE
 ├── IDEAS.md             # open ideas for the Nova harness
+├── extensions/          # pi extension modules Nova ships (the update-safe user layer)
+│   └── minimal-status/   # quiet terminal: animated Thinking…/Working… status
 ├── dashboard/           # THE PIPES ROOM — live observability/control of provider payloads
 │   ├── AGENTS.md        # working agreement for the Dashboard
 │   ├── CONTEXT.md       # Dashboard glossary (payload, injectable, capture log, …)
@@ -31,6 +33,9 @@ nova/
   room / Dashboard`). Within a room's files, use that room's glossary from its own `CONTEXT.md`.
 - **A new room is a top-level directory** with its own `AGENTS.md`, `CONTEXT.md`, and `docs/`; it
   is a sibling of `dashboard/`. Give every room `docs/agents/` and follow the tracker there.
+- **Pi extensions live in `extensions/`** (one dir per extension, symlinked into
+  `~/.pi/agent/extensions/`). Small, single-purpose extensions go here; a composite component that
+  grows a surface of its own deserves its own room.
 - **Build as pi extensions, not forks.** Prefer the pi extension seam over re-embedding pi via the
   SDK (see `dashboard/docs/adr/0001-extension-seam-is-the-control-point.md`). Flag any work that
   would require touching pi itself.

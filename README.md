@@ -5,7 +5,14 @@ Nova doesn't fork pi — it extends it from the user-owned layer with pi extensi
 survives pi updates.
 
 Nova is organized as **rooms** (components): each room is one or more pi extensions plus a surface
-that shows what they do.
+that shows what they do. Pi extensions we ship live in `extensions/`; a composite component with its
+own surface becomes a room.
+
+## Extensions
+
+| Extension | What it is |
+| --------- | ---------- |
+| `extensions/minimal-status/` | Quiet terminal — animated `Thinking…`/`Working…` status while the harness runs |
 
 ## Rooms
 
