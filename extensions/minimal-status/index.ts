@@ -2,9 +2,9 @@
  * Minimal status — Nova's "quiet terminal" extension
  *
  * Keeps the Pi terminal minimal while an agent run is active:
- *  - shows an animated three-dot throbber on "Thinking..." while the model
- *    is generating, and "Working..." while a tool is executing
- *  - replaces Pi's default spinner with a plain animated-dots indicator
+ *  - shows the default spinner on "Thinking" while the model is generating, and
+ *    on "Working" while a tool is executing
+ *  - the label swaps in-place; Pi's built-in spinner provides the animation
  *
  * This is purely presentational: it only changes what the terminal shows. It
  * does not touch the session, model context, or capture logging, so
@@ -25,26 +25,16 @@ const LABEL: Record<ActivePhase, string> = {
 	working: "Working",
 };
 
-/** Trailing dots that grow 0 → 3, then reset. */
-const DOT_FRAMES = ["", ".", "..", "..."];
-
-const INTERVAL_MS = 200;
-
-/** Build the animated frames for a phase: "Thinking", "Thinking.", "Thinking..", "Thinking..." */
-function framesFor(phase: ActivePhase): string[] {
-	return DOT_FRAMES.map((dots) => `${LABEL[phase]}${dots}`);
-}
-
 function apply(ctx: ExtensionContext, phase: Phase): void {
 	if (phase === "idle") {
 		ctx.ui.setWorkingMessage(undefined);
 		ctx.ui.setWorkingIndicator(undefined);
 		return;
 	}
-	// Dots are animated inside the frames; keep the message empty so the loader
-	// shows only the animated label.
-	ctx.ui.setWorkingMessage("");
-	ctx.ui.setWorkingIndicator({ frames: framesFor(phase), intervalMs: INTERVAL_MS });
+	// Hidden indicator (undefined) = Pi's default spinner, which animates next
+	// to whatever label we set.
+	ctx.ui.setWorkingMessage(LABEL[phase]);
+	ctx.ui.setWorkingIndicator(undefined);
 }
 
 export default function (pi: ExtensionAPI) {

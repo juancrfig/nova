@@ -1,9 +1,9 @@
 # Minimal Status
 
-A Pi extension (Nova's "quiet terminal"): while an agent run is active it shows an
-**animated three-dot throbber** — `Thinking…` while the model generates, `Working…` while a tool
-executes — replacing Pi's default spinner. Purely presentational; it never touches the session,
-model context, or capture logging, so observability is unaffected.
+A Pi extension (Nova's "quiet terminal"): while an agent run is active it swaps the status label
+between **`Thinking`** (model generating) and **`Working`** (tool executing), keeping **Pi's default
+spinner** as the animated indicator instead of a custom one. Purely presentational; it never touches
+the session, model context, or capture logging, so observability is unaffected.
 
 ## Install
 
@@ -15,12 +15,10 @@ ln -s "$PWD/extensions/minimal-status" ~/.pi/agent/extensions/minimal-status
 
 ## How it works
 
-- Uses `ctx.ui.setWorkingIndicator(...)` / `setWorkingMessage(...)` — Pi shows this loader for the
-  whole duration of an agent run (`isStreaming`).
+- Uses `ctx.ui.setWorkingMessage(...)` (label) while leaving the indicator at its default, so Pi's
+  own spinner animates next to the label.
 - **State source**: `before_agent_start` → `thinking`; `tool_execution_start/end` → `working` /
   back to `thinking` (a running-tool counter handles parallel tools); `agent_settled` → `idle`.
-- **Animation**: frames carry the label + growing dots (`Thinking`, `Thinking.`, `Thinking..`,
-  `Thinking...`), so Pi's own loader timer drives the animation.
 
 ## Next step (deferred by design)
 
