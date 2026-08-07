@@ -24,3 +24,9 @@ own surface becomes a room.
 
 See `AGENTS.md`. Nova's vocabulary is in `CONTEXT.md`; the Dashboard's is in `dashboard/CONTEXT.md`.
 Architectural commitments live in `dashboard/docs/adr/`.
+
+## Bootstrap a new machine
+
+```bash
+./scripts/init.sh   # symlink extensions + merge default settings (non-destructive)
+```

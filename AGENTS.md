@@ -16,6 +16,8 @@ nova/
 ├── README.md            # orientation: what Nova is, current state, how to run things
 ├── LICENSE
 ├── IDEAS.md             # open ideas for the Nova harness
+├── scripts/             # dev tooling: init.sh (bootstrap a machine), merge-settings.mjs
+├── config/              # repo config, e.g. settings.defaults.json (init merges these)
 ├── extensions/          # pi extension modules Nova ships (the update-safe user layer)
 │   └── minimal-status/   # quiet terminal: animated Thinking…/Working… status
 ├── dashboard/           # THE PIPES ROOM — live observability/control of provider payloads
@@ -36,6 +38,11 @@ nova/
 - **Pi extensions live in `extensions/`** (one dir per extension, symlinked into
   `~/.pi/agent/extensions/`). Small, single-purpose extensions go here; a composite component that
   grows a surface of its own deserves its own room.
+- **New-machine bootstrap**: run `scripts/init.sh`. It symlinks every extension in `extensions/`
+  into `~/.pi/agent/extensions/` and merges `config/settings.defaults.json` into
+  `~/.pi/agent/settings.json`. It is idempotent and non-destructive: existing extensions are
+  skipped, and a setting is only added when the user hasn't already set it. To opt into new
+  defaults, add keys to `config/settings.defaults.json`.
 - **Build as pi extensions, not forks.** Prefer the pi extension seam over re-embedding pi via the
   SDK (see `dashboard/docs/adr/0001-extension-seam-is-the-control-point.md`). Flag any work that
   would require touching pi itself.
