@@ -55,14 +55,14 @@ const SPINNER_FRAMES = Array.from({ length: SPINNER_GLYPHS.length }, (_, frame) 
 		return `${glyph} `;
 	}).join(""),
 );
+const SPINNER_OFF_FRAME = Array.from({ length: SPINNER_CELL_COUNT }, () => "· ").join("");
 const SPINNER_MS = 100;
 
 class Spinner {
 	private index = 0;
 	private timer: ReturnType<typeof setInterval> | undefined;
-	// We only animate when idle — a static glyph otherwise keeps the box from
-	// chewing CPU and stops it from "spinning" at the wrong times.
-	animate = false;
+	// Animate only while the agent is busy. The off frame keeps the same
+	// footprint while idle, so the footer never changes width.
 
 	start(): void {
 		this.animate = true;
@@ -126,10 +126,11 @@ function makeFooter(theme: Freestyle) {
 			// Bottom-right column: spinner above, workspace pinned to the very
 			// bottom line (path is always the last row).
 			const avail = Math.max(4, width - 4);
-			const spinnerStr = active ? spinner.frame() : " ";
+			const spinnerStr = active ? spinner.frame() : SPINNER_OFF_FRAME;
 			const pathStr = fitTail(prettyPath(workspace), avail);
+			const spinnerColor = active ? "accent" : "dim";
 
-			const spinnerLine = " ".repeat(Math.max(0, width - visibleWidth(spinnerStr))) + theme.fg("accent", spinnerStr);
+			const spinnerLine = " ".repeat(Math.max(0, width - visibleWidth(spinnerStr))) + theme.fg(spinnerColor, spinnerStr);
 			const pathLine = " ".repeat(Math.max(0, width - visibleWidth(pathStr))) + theme.fg("dim", pathStr);
 
 			// Two fixed lines → stable layout regardless of activity. Path is last.
