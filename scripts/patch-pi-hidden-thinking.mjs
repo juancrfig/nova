@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 /**
- * Pi renderer patch (Nova) — removes the blank placeholder row that Pi draws
- * for hidden reasoning (hideThinkingBlock), keeping thinking enabled + reasoning
- * hidden without an empty line. (The normal leading space above an assistant
- * message is preserved so replies keep a small gap from your message.)
+ * Pi renderer patch (Nova) — minimal-terminal fixes to pi's installed, compiled
+ * assistant-message renderer:
+ *   1. removes the blank placeholder row drawn for hidden reasoning
+ *      (hideThinkingBlock) — keeps thinking enabled + reasoning hidden,
+ *      without an empty line;
+ *   2. removes the leading blank line Pi puts above every assistant message, so
+ *      replies start at the top (no whitespace "appears" as text streams in).
+ *      Horizontal margin is instead provided by the outputPad setting.
  *
  * This is an ADMITTED exception to Nova's "never touch pi" rule: it edits pi's
  * installed, compiled renderer, so it is overwritten on the next pi update and
@@ -37,6 +41,56 @@ const PLACEHOLDER_COMMENT = `// ${MARKER} placeholder removed so no blank line a
 
 const SPACER_IF = "if (hasVisibleContentAfter) {";
 const SPACER_IF_PATCHED = "if (!this.hideThinkingBlock && hasVisibleContentAfter) {";
+
+// The leading blank line Pi puts above every assistant message (`Spacer(1)`
+// guarded by `if (hasVisibleContent)`). Removed so replies start at the top and
+// nothing "appears" as whitespace when the text streams in.
+const MARKER_LEAD = "[Nova lead-spacer patch]";
+const LEAD_OPENER = /^\s*if \(hasVisibleContent\) \{\s*$/;
+const LEAD_ALLOC = /^\s*this\.contentContainer\.addChild\(new Spacer\(1\)\);/;
+const LEAD_CLOSE = /^\s*}\s*$/;
+
+/** Remove the leading blank-line block above assistant message content. */
+function removeLeadSpacer(buf) {
+	const lines = buf.split("\n");
+	const out = [];
+	let hit = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (!LEAD_OPENER.test(lines[i])) {
+			out.push(lines[i]);
+			continue;
+		}
+		const inside = lines[i + 1] ?? "";
+		const closing = lines[i + 2] ?? "";
+		if (LEAD_ALLOC.test(inside) && LEAD_CLOSE.test(closing)) {
+			const indent = /^(\s*)/.exec(lines[i])[1];
+			out.push(`${indent}// ${MARKER_LEAD} leading blank line above assistant messages removed.`);
+			i += 2;
+			hit = 1;
+		} else {
+			out.push(lines[i]);
+		}
+	}
+	return { content: out.join("\n"), hit };
+}
+
+/** Restore the leading blank-line block (revert). */
+function restoreLeadSpacer(buf) {
+	const lines = buf.split("\n");
+	let hit = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i].includes(MARKER_LEAD)) {
+			const indent = /^(\s*)/.exec(lines[i])[1];
+			lines[i] = [
+				`${indent}if (hasVisibleContent) {`,
+				`${indent}\tthis.contentContainer.addChild(new Spacer(1));`,
+				`${indent}}`,
+			].join("\n");
+			hit = 1;
+		}
+	}
+	return { content: lines.join("\n"), hit };
+}
 
 /** Replace any whole line containing `needle`, preserving its indentation. */
 function lineReplace(buf, needle, replacementText) {
@@ -87,6 +141,16 @@ function applyPatch(buf) {
 		changed = true;
 	}
 
+	// Leading blank line above assistant messages — skip if already applied.
+	if (!out.includes(MARKER_LEAD)) {
+		const r3 = removeLeadSpacer(out);
+		out = r3.content;
+		if (r3.hit !== 1) {
+			return { ok: false, changed: false, message: `expected 1 lead-spacer block, got ${r3.hit} — pi version changed? Refusing to guess.` };
+		}
+		changed = true;
+	}
+
 	if (!changed) return { ok: true, changed: false, message: "already patched" };
 	return { ok: true, changed: true, message: "patched", content: out };
 }
@@ -102,6 +166,15 @@ function revertPatch(buf) {
 		out = r2.content;
 		if (r1.hit !== 1 || r2.hit !== 1) {
 			return { ok: false, changed: false, message: `expected 1 match each, got placeholder=${r1.hit}, spacer=${r2.hit} — patched state changed? Refusing to guess.` };
+		}
+		hitAny = true;
+	}
+
+	if (out.includes(MARKER_LEAD)) {
+		const r3 = restoreLeadSpacer(out);
+		out = r3.content;
+		if (r3.hit !== 1) {
+			return { ok: false, changed: false, message: `expected 1 lead-spacer block, got ${r3.hit} — patched state changed? Refusing to guess.` };
 		}
 		hitAny = true;
 	}

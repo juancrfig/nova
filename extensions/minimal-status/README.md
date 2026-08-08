@@ -6,12 +6,18 @@ preserved** (tool results are still executed and recorded; hiding only affects t
 
 ## What it does
 
-1. **Loader box — bottom-right corner.** A small box `[...]` pinned to the bottom-right of the
-   terminal with an animated Pi-style spinner. It's visible whenever the agent is busy (you're
-   waiting), **including while the answer is being written**. When idle it's a stable empty line.
-   Uses a fixed one-line custom footer (`ctx.ui.setFooter`), so nothing appears/disappears → **no
-   layout shift / no flicker**. (Trade-off: it replaces Pi's built-in footer, so pwd/token/model
-   info isn't shown.)
+1. **HUD grid — bottom-right corner.** A bordered panel with two cells, right-aligned at the very
+   bottom corner:
+   ```
+   ┌───────────────┐
+   │ ⠋             │   spinner (border persists even when idle)
+   ├───────────────┤
+   │ ~/nova        │   current workspace
+   └───────────────┘
+   ```
+   The spinner cell animates whenever the agent is busy (including while writing); its **border
+   stays even when idle**, so the HUD never appears/disappears → no layout shift / no flicker.
+   Uses `ctx.ui.setFooter` (replaces Pi's built-in footer).
 2. **Hide tool output** — blanks the transcript renderer of the built-in tools (`bash`, `read`,
    `edit`, `write`, `grep`, `find`, `ls`) while **reusing Pi's real `execute`** (via the exported
    `create*Tool` factories), so tools behave identically — only what the transcript shows changes.
@@ -40,9 +46,11 @@ ln -s "$PWD/extensions/minimal-status" ~/.pi/agent/extensions/minimal-status
 
 ## Notes / trade-offs
 
+- The custom HUD footer replaces the built-in footer (pwd/token/model info isn't shown).
+- **No vertical gap between messages now**: the patch removes Pi's leading blank line above each
+  assistant reply (so no whitespace "appears" when text streams). Breathing room instead comes from
+  the `outputPad` setting, set to `2` for a comfortable left margin (see `config/settings.defaults.json`).
 - Hiding a built-in tool means registering a same-named override; Pi prints a one-time
   "overridden built-in tool" note.
 - `createBashTool(cwd)` uses Pi's default local bash (default shell) — matches Pi's defaults unless
   your setup customizes bash (custom shell path, sandboxed operations).
-- The custom footer replaces the built-in one. If you want a dim model name on the left (keeping
-  the corner box on the right), that's a small addition — say the word.
