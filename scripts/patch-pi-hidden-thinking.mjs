@@ -41,41 +41,6 @@ const PLACEHOLDER_COMMENT = `// ${MARKER} placeholder removed so no blank line a
 
 const SPACER_IF = "if (hasVisibleContentAfter) {";
 const SPACER_IF_PATCHED = "if (!this.hideThinkingBlock && hasVisibleContentAfter) {";
-const MARKER_GAP = "[Nova stable-gap patch]";
-
-function insertStableGap(buf) {
-	const lines = buf.split("\n");
-	const out = [];
-	let hit = 0;
-	for (let i = 0; i < lines.length; i++) {
-		if (
-			lines[i].trim() === "this.chatContainer.addChild(this.streamingComponent);" &&
-			(lines[i + 1] ?? "").includes("updateContent(this.streamingMessage, true)")
-		) {
-			const indent = /^(\s*)/.exec(lines[i])[1];
-			out.push(`${indent}// ${MARKER_GAP} stable gap before assistant message`);
-			out.push(`${indent}this.chatContainer.addChild(new Spacer(1));`);
-			hit++;
-		}
-		out.push(lines[i]);
-	}
-	return { content: out.join("\n"), hit };
-}
-
-function removeStableGap(buf) {
-	const lines = buf.split("\n");
-	const out = [];
-	let hit = 0;
-	for (let i = 0; i < lines.length; i++) {
-		if (lines[i].includes(MARKER_GAP)) {
-			hit++;
-			if ((lines[i + 1] ?? "").trim() === "this.chatContainer.addChild(new Spacer(1));") i++;
-			continue;
-		}
-		out.push(lines[i]);
-	}
-	return { content: out.join("\n"), hit };
-}
 
 // The leading blank line Pi puts above every assistant message (`Spacer(1)`
 // guarded by `if (hasVisibleContent)`). Removed so replies start at the top and
@@ -226,7 +191,6 @@ if (!root) {
 }
 
 const assistantFile = join(root, "dist", "modes", "interactive", "components", "assistant-message.js");
-const interactiveFile = join(root, "dist", "modes", "interactive", "interactive-mode.js");
 console.log(`pi root: ${root}`);
 
 let ok = true;
@@ -245,39 +209,6 @@ let changedAny = false;
 			changedAny = true;
 		}
 		console.log(`${r.changed ? "✓" : "="} assistant-message.js: ${r.message}`);
-	}
-}
-
-// --- interactive-mode.js (one stable separator at message start) ---
-{
-	const buf = readFileSync(interactiveFile, "utf8");
-	let r;
-	if (mode === "apply") {
-		if (buf.includes(MARKER_GAP)) {
-			r = { ok: true, changed: false, message: "already patched" };
-		} else {
-			const t = insertStableGap(buf);
-			r = t.hit === 1
-				? { ok: true, changed: true, message: "patched", content: t.content }
-				: { ok: false, changed: false, message: `expected 1 anchor, got ${t.hit} — pi version changed? Refusing to guess.` };
-		}
-	} else if (!buf.includes(MARKER_GAP)) {
-		r = { ok: true, changed: false, message: "not patched (nothing to revert)" };
-	} else {
-		const t = removeStableGap(buf);
-		r = t.hit === 1
-			? { ok: true, changed: true, message: "reverted", content: t.content }
-			: { ok: false, changed: false, message: "stable-gap state not recognized — refusing to guess." };
-	}
-	if (!r.ok) {
-		console.error(`✗ interactive-mode.js: ${r.message}`);
-		ok = false;
-	} else {
-		if (r.changed) {
-			writeFileSync(interactiveFile, r.content);
-			changedAny = true;
-		}
-		console.log(`${r.changed ? "✓" : "="} interactive-mode.js: ${r.message}`);
 	}
 }
 
