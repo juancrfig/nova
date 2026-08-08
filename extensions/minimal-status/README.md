@@ -1,29 +1,39 @@
-# Minimal Status
+# Minimal Status — Nova's "quiet terminal" module
 
-A Pi extension (Nova's "quiet terminal"): while an agent run is active it swaps the status label
-between **`Thinking`** (model generating) and **`Working`** (tool executing), keeping **Pi's default
-spinner** as the animated indicator instead of a custom one. It also silences Pi's italic
-`Thinking...` placeholder (shown when `hideThinkingBlock` is on) so it doesn't duplicate the spinner
-label. Purely presentational; it never touches
-the session, model context, or capture logging, so observability is unaffected.
+One home for keeping the **Pi terminal minimal** while the harness runs. Purely presentational: it
+never changes the session, the model context, or any captured/logged data — **observability is
+preserved** (tool results are still executed and recorded; hiding only affects the transcript).
+
+## What it does
+
+1. **Status labels** — an animated (Pi's default-spinner) status that says what the harness is doing:
+   - `Thinking` — the model is generating/reasoning
+   - `Working` — at least one tool is executing
+   - `Waiting` — the run is active with queued follow-up work and nothing else to do right now
+   - (idle → Pi's normal empty status)
+2. **Hide tool output** — blanks the transcript renderer of the built-in tools (`bash`, `read`,
+   `edit`, `write`, `grep`, `find`, `ls`) while **reusing Pi's real `execute`** (via the exported
+   `create*Tool` factories), so tools behave identically — only what the transcript shows changes.
+   Flip `HIDE_TOOLS` to `false` to turn this off.
+3. **Silence hidden-thinking placeholder** — when `hideThinkingBlock` is on, Pi shows an italic
+   `Thinking...` placeholder in the transcript; this blanks it so it doesn't duplicate the status.
+   The `hideThinkingBlock` setting itself lives in `config/settings.defaults.json` (applied by
+   `scripts/init.sh`) — they are two halves of the same "hide reasoning display" decision,
+   intentionally kept together here.
 
 ## Install
 
-Symlink this directory into your Pi user-extensions dir, then `/reload`:
-
 ```bash
 ln -s "$PWD/extensions/minimal-status" ~/.pi/agent/extensions/minimal-status
+# then /reload in Pi
 ```
 
-## How it works
+## Notes / trade-offs
 
-- Uses `ctx.ui.setWorkingMessage(...)` (label) while leaving the indicator at its default, so Pi's
-  own spinner animates next to the label.
-- **State source**: `before_agent_start` → `thinking`; `tool_execution_start/end` → `working` /
-  back to `thinking` (a running-tool counter handles parallel tools); `agent_settled` → `idle`.
-
-## Next step (deferred by design)
-
-Hide tool results from the transcript while keeping them logged. This requires overriding built-in
-tools' `renderResult` (returning an empty component) while still wrapping their execution to
-preserve the exact result shape — heavy enough to warrant its own change. Tracked as a follow-up.
+- Hiding a built-in tool means registering a same-named override; Pi prints a one-time
+  "overridden built-in tool" note.
+- `createBashTool(cwd)` uses Pi's default local bash (default shell) — matches Pi's defaults unless
+  your setup customizes bash (custom shell path, sandboxed operations). If that matters, the hiding
+  can be scoped to the tools you actually want quiet.
+- "Waiting" keys off queued follow-up messages (`ctx.hasPendingMessages()`). It covers the native
+  "work pending" case; a future background-task extension can push a precise `Waiting` when needed.

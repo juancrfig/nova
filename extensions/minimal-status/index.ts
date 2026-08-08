@@ -1,87 +1,169 @@
 /**
- * Minimal status — Nova's "quiet terminal" extension
+ * Minimal status — Nova's "quiet terminal" module.
  *
- * Keeps the Pi terminal minimal while an agent run is active:
- *  - shows the default spinner on "Thinking" while the model is generating, and
- *    on "Working" while a tool is executing
- *  - the label swaps in-place; Pi's built-in spinner provides the animation
- *  - silences Pi's italic "Thinking..." placeholder (from hideThinkingBlock) so
- *    it doesn't duplicate the spinner's "Thinking"
+ * One home for all the "keep the Pi terminal minimal" behavior:
  *
- * This is purely presentational: it only changes what the terminal shows. It
- * does not touch the session, model context, or capture logging, so
- * observability is preserved (tool output is still logged elsewhere).
+ *   1. STATUS LABELS — an animated (default-spinner) status that reads what the
+ *      harness is doing:
+ *        Thinking…  the model is generating/reasoning
+ *        Working…   at least one tool is executing
+ *        Waiting…   the run is active with queued follow-up work, nothing else
+ *                   to do right now
+ *      (falls back to idle → Pi's normal empty status)
  *
- * Install: symlink this directory into your user extensions dir
+ *   2. TOOL OUTPUT — blanks the transcript rendering of built-in tools (call
+ *      header + result) while reusing Pi's real execution, so tools still run
+ *      exactly as before and their results are still recorded/logged (see
+ *      "Observability is a Nova principle"). Set HIDE_TOOLS=false to disable.
+ *
+ *   3. HIDDEN THINKING — silences Pi's italic "Thinking..." placeholder that
+ *      appears when hideThinkingBlock is on, so it doesn't duplicate the
+ *      spinner's "Thinking". The hideThinkingBlock setting itself lives in
+ *      config/settings.defaults.json (applied by scripts/init.sh).
+ *
+ * This module is purely presentational: it never changes the session, the
+ * model context, or any captured/logged data.
+ *
+ * Install: symlink into Pi's user extensions dir, then /reload:
  *   ln -s "$PWD/extensions/minimal-status" ~/.pi/agent/extensions/minimal-status
- *   # then /reload in Pi
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+	createBashTool,
+	createEditTool,
+	createFindTool,
+	createGrepTool,
+	createLsTool,
+	createReadTool,
+	createWriteTool,
+} from "@earendil-works/pi-coding-agent";
+import { Container } from "@earendil-works/pi-tui";
 
-type ActivePhase = "thinking" | "working";
-type Phase = ActivePhase | "idle";
+// ---------------------------------------------------------------------------
+// 1. Status labels
+// ---------------------------------------------------------------------------
 
-const LABEL: Record<ActivePhase, string> = {
+type Phase = "thinking" | "working" | "waiting" | "idle";
+
+const PHASE_LABEL: Record<Exclude<Phase, "idle">, string> = {
 	thinking: "Thinking",
 	working: "Working",
+	waiting: "Waiting",
 };
 
-// With hideThinkingBlock enabled Pi renders an italic placeholder where the
-// reasoning was. Default is "Thinking...". Our status spinner already reads
-// "Thinking", so leave this empty to avoid a duplicate. Set it to e.g.
-// "·", "…", or "(reasoning hidden)" if you want a marker instead.
-const HIDDEN_THINKING_LABEL = "";
+/**
+ * Tracks the harness phase from Pi lifecycle signals.
+ *  - working: at least one tool executing (counter handles parallel tools)
+ *  - waiting: run active, no tools, but queued follow-up work is pending
+ *  - thinking: run active, no tools, no pending work
+ *  - idle: no active run
+ */
+class StatusState {
+	private active = false;
+	private toolCount = 0;
 
-function apply(ctx: ExtensionContext, phase: Phase): void {
+	beginRun(): void {
+		this.active = true;
+	}
+	endRun(): void {
+		this.active = false;
+		this.toolCount = 0;
+	}
+	toolStart(): void {
+		this.toolCount++;
+	}
+	toolEnd(): void {
+		this.toolCount = Math.max(0, this.toolCount - 1);
+	}
+	phase(pending: boolean): Phase {
+		if (this.toolCount > 0) return "working";
+		if (!this.active) return "idle";
+		if (pending) return "waiting";
+		return "thinking";
+	}
+}
+
+function applyPhase(ctx: ExtensionContext, phase: Phase): void {
 	if (phase === "idle") {
 		ctx.ui.setWorkingMessage(undefined);
 		ctx.ui.setWorkingIndicator(undefined);
 		return;
 	}
-	// Hidden indicator (undefined) = Pi's default spinner, which animates next
-	// to whatever label we set.
-	ctx.ui.setWorkingMessage(LABEL[phase]);
-	ctx.ui.setWorkingIndicator(undefined);
+	ctx.ui.setWorkingMessage(PHASE_LABEL[phase]);
+	ctx.ui.setWorkingIndicator(undefined); // undefined → Pi's default spinner
 }
 
-export default function (pi: ExtensionAPI) {
-	let phase: Phase = "idle";
-	let runningTools = 0;
+// ---------------------------------------------------------------------------
+// 2. Hide tool output (reuse Pi's real execution; blank the renderers)
+// ---------------------------------------------------------------------------
 
-	const setPhase = (ctx: ExtensionContext, next: Phase) => {
-		if (next === phase) return;
-		phase = next;
-		apply(ctx, phase);
-	};
+// Flip to false to stop blanking tool output.
+const HIDE_TOOLS = true;
+
+function registerToolHiding(pi: ExtensionAPI, cwd: string): void {
+	if (!HIDE_TOOLS) return;
+	const blank = () => new Container(); // renders nothing
+	const builtins = [
+		createBashTool(cwd),
+		createReadTool(cwd),
+		createEditTool(cwd),
+		createWriteTool(cwd),
+		createGrepTool(cwd),
+		createFindTool(cwd),
+		createLsTool(cwd),
+	];
+	for (const tool of builtins) {
+		pi.registerTool({ ...tool, renderCall: blank, renderResult: blank });
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 3. Hidden-thinking placeholder (paired with hideThinkingBlock in settings)
+// ---------------------------------------------------------------------------
+
+// Leave empty so the spinner's "Thinking" is the only one. For a subtle marker
+// instead, use e.g. "·", "…", or "(reasoning hidden)".
+const HIDDEN_THINKING_LABEL = "";
+
+// ---------------------------------------------------------------------------
+// Extension
+// ---------------------------------------------------------------------------
+
+export default function (pi: ExtensionAPI) {
+	const state = new StatusState();
+
+	const decide = (ctx: ExtensionContext) => applyPhase(ctx, state.phase(ctx.hasPendingMessages()));
 
 	pi.on("session_start", async (_event, ctx) => {
-		phase = "idle";
-		runningTools = 0;
+		state.endRun();
 		ctx.ui.setHiddenThinkingLabel(HIDDEN_THINKING_LABEL);
+		registerToolHiding(pi, ctx.cwd);
+		applyPhase(ctx, "idle");
 	});
 
-	// User submitted a prompt: the model is about to reason.
 	pi.on("before_agent_start", async (_event, ctx) => {
 		ctx.ui.setHiddenThinkingLabel(HIDDEN_THINKING_LABEL);
-		setPhase(ctx, "thinking");
+		state.beginRun();
+		decide(ctx);
 	});
 
-	// A tool started executing: we're "working".
 	pi.on("tool_execution_start", async (_event, ctx) => {
-		runningTools++;
-		setPhase(ctx, "working");
+		state.toolStart();
+		decide(ctx);
 	});
 
-	// Tool finished: back to thinking (parallel tools may still be running).
 	pi.on("tool_execution_end", async (_event, ctx) => {
-		runningTools = Math.max(0, runningTools - 1);
-		if (runningTools === 0) setPhase(ctx, "thinking");
+		state.toolEnd();
+		decide(ctx);
 	});
 
-	// The whole run has settled (no retry/compaction left): go idle.
+	// A turn finished: if follow-up work is queued we're "waiting", otherwise
+	// the run continues "thinking".
+	pi.on("turn_end", async (_event, ctx) => decide(ctx));
+
 	pi.on("agent_settled", async (_event, ctx) => {
-		runningTools = 0;
-		setPhase(ctx, "idle");
+		state.endRun();
+		applyPhase(ctx, "idle");
 	});
 }

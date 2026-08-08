@@ -12,7 +12,7 @@ own surface becomes a room.
 
 | Extension | What it is |
 | --------- | ---------- |
-| `extensions/minimal-status/` | Quiet terminal — animated `Thinking…`/`Working…` status while the harness runs |
+| `extensions/minimal-status/` | Quiet terminal — Thinking/Working/Waiting status; hides tool output & reasoning placeholder |
 
 ## Rooms
 
