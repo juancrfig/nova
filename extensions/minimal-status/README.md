@@ -17,22 +17,17 @@ preserved** (tool results are still executed and recorded; hiding only affects t
    `create*Tool` factories), so tools behave identically — only what the transcript shows changes.
    Flip `HIDE_TOOLS` to `false` to turn this off.
 
-## The leading blank line above/behind the answer
+## The reasoning placeholder (blank row)
 
-Two renderer-level blank lines come from Pi's `assistant-message.js`:
-(same file, both fixed by the one re-applicable patch)
-
-1. **Reasoning placeholder row** — `hideThinkingBlock: true` renders a placeholder row for
-   hidden reasoning. The patch **removes both the blank placeholder row and the leading blank
-   line above every assistant message**, keeping `hideThinkingBlock: true` (reasoning used but
-   not shown) with no stray whitespace.
-2. **Leading blank line** — Pi inserts a `Spacer(1)` at the top of each assistant message; the
-   patch removes it so replies start at the top.
-
-The patch is an admitted exception to the "never touch pi" rule. Re-run it after any pi update:
+The blank row where hidden reasoning sits comes from Pi's `hideThinkingBlock: true`, which renders a
+placeholder row for it. A **separate, re-applicable patch** (`scripts/patch-pi-hidden-thinking.mjs`,
+an admitted exception to the "never touch pi" rule) removes that placeholder row while keeping
+`hideThinkingBlock: true` — reasoning is used but not shown, with no stray blank row. The normal
+small leading space above an assistant message is preserved, so your message and the reply keep a
+small gap. Re-run the patch after any pi update:
 
 ```bash
-node scripts/patch-pi-hidden-thinking.mjs        # apply (only missing pieces)
+node scripts/patch-pi-hidden-thinking.mjs        # apply
 node scripts/patch-pi-hidden-thinking.mjs --revert  # undo
 ```
 
