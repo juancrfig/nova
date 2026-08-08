@@ -85,30 +85,40 @@ class Spinner {
 
 const spinner = new Spinner();
 let active = false; // agent is busy → spinner visible
+let workspace = ""; // current working directory (captured at session start)
+
+// Keep the tail of a path so it fits `width`, signalling truncation with "…".
+function fitTail(text: string, width: number): string {
+	if (visibleWidth(text) <= width) return text;
+	let cut = text.length;
+	while (cut > 1 && visibleWidth("…" + text.slice(-cut)) > width) cut--;
+	return "…" + text.slice(-cut);
+}
 
 type Freestyle = any;
 
-function makeFooter() {
+function makeFooter(theme: Freestyle) {
 	return {
 		invalidate() {},
 		dispose() {
 			spinner.dispose();
 		},
 		render(width: number): string[] {
-			// A single, always-present line keeps the layout stable.
-			if (!active) {
-				return [""];
+			// Bottom line: current workspace, right-aligned.
+			const ws = fitTail(theme.fg("dim", workspace), width);
+			const bottomLine = " ".repeat(Math.max(0, width - visibleWidth(ws))) + ws;
+
+			// Top line: spinner box (only when busy), right-aligned.
+			let top = "";
+			if (active) {
+				const box = theme.fg("accent", `[${spinner.frame()}]`);
+				top = " ".repeat(Math.max(0, width - visibleWidth(box))) + box;
 			}
-			const box = `[${spinner.frame()}]`;
-			const pad = " ".repeat(Math.max(0, width - visibleWidth(box)));
-			return [pad + box];
+
+			// Two fixed lines → stable layout regardless of activity.
+			return [top, bottomLine];
 		},
 	};
-}
-
-function setFooterFor(ctx: ExtensionContext, tui: Freestyle): void {
-	spinner.ping = () => tui?.requestRender?.();
-	ctx.ui.setFooter(() => makeFooter());
 }
 
 // ---------------------------------------------------------------------------
@@ -149,13 +159,14 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		active = false;
+		workspace = ctx.cwd;
 		spinner.stop();
 		hideBuiltinLoader(ctx);
 		registerToolHiding(pi, ctx.cwd);
-		ctx.ui.setFooter((tui) => {
+		ctx.ui.setFooter((tui, theme) => {
 			// Capture the TUI so the spinner tick can re-render the footer.
 			spinner.ping = () => tui.requestRender?.();
-			return makeFooter();
+			return makeFooter(theme);
 		});
 	});
 
