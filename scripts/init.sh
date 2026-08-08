@@ -56,5 +56,8 @@ else
   echo "  (no $SETTINGS_DEFAULTS — nothing to merge)"
 fi
 
+echo "alias nova='pi'" >> ~/.bashrc
+
+
 echo
 echo "Done. Start a fresh Pi (or run /reload) to load the extensions."
