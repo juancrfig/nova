@@ -92,6 +92,44 @@ function restoreLeadSpacer(buf) {
 	return { content: lines.join("\n"), hit };
 }
 
+const MARKER_GAP = "[Nova stable-gap patch]";
+
+/** Insert one stable blank line before the assistant message (streaming start). */
+function insertStableGap(buf) {
+	const lines = buf.split("\n");
+	const out = [];
+	let hit = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (
+			lines[i].trim() === "this.chatContainer.addChild(this.streamingComponent);" &&
+			(lines[i + 1] ?? "").includes("updateContent(this.streamingMessage, true)")
+		) {
+			const indent = /^(\s*)/.exec(lines[i])[1];
+			out.push(`${indent}// ${MARKER_GAP} stable gap before assistant message`);
+			out.push(`${indent}this.chatContainer.addChild(new Spacer(1));`);
+			hit++;
+		}
+		out.push(lines[i]);
+	}
+	return { content: out.join("\n"), hit };
+}
+
+/** Remove the stable gap line (revert). */
+function removeStableGap(buf) {
+	const lines = buf.split("\n");
+	const out = [];
+	let hit = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i].includes(MARKER_GAP)) {
+			hit = 1;
+			if ((lines[i + 1] ?? "").trim() === "this.chatContainer.addChild(new Spacer(1));") i++;
+			continue;
+		}
+		out.push(lines[i]);
+	}
+	return { content: out.join("\n"), hit };
+}
+
 /** Replace any whole line containing `needle`, preserving its indentation. */
 function lineReplace(buf, needle, replacementText) {
 	const lines = buf.split("\n");
@@ -189,17 +227,58 @@ if (!root) {
 	console.error("Could not locate the pi package. Set $PI_ROOT to its install root.");
 	process.exit(1);
 }
-const file = join(root, "dist", "modes", "interactive", "components", "assistant-message.js");
+
+const assistantFile = join(root, "dist", "modes", "interactive", "components", "assistant-message.js");
+const interactiveFile = join(root, "dist", "modes", "interactive", "interactive-mode.js");
 console.log(`pi root: ${root}`);
-console.log(`target:  ${file}`);
 
-const original = readFileSync(file, "utf8");
-const result = mode === "apply" ? applyPatch(original) : revertPatch(original);
+let ok = true;
+let changedAny = false;
 
-if (!result.ok) {
-	console.error(`✗ ${result.message}`);
-	process.exit(1);
+// --- assistant-message.js (reasoning placeholder + leading blank) ---
+{
+	const buf = readFileSync(assistantFile, "utf8");
+	const r = mode === "apply" ? applyPatch(buf) : revertPatch(buf);
+	if (!r.ok) {
+		console.error(`✗ assistant-message.js: ${r.message}`);
+		ok = false;
+	} else {
+		if (r.changed) {
+			writeFileSync(assistantFile, r.content);
+			changedAny = true;
+		}
+		console.log(`${r.changed ? "✓" : "="} assistant-message.js: ${r.message}`);
+	}
 }
-if (result.changed) writeFileSync(file, result.content);
-console.log(`✓ ${result.message}`);
-if (result.changed) console.log("  Restart pi (not just /reload) for the change to take effect.");
+
+// --- interactive-mode.js (stable gap before assistant message) ---
+{
+	const buf = readFileSync(interactiveFile, "utf8");
+	let r;
+	if (mode === "apply") {
+		if (buf.includes(MARKER_GAP)) r = { ok: true, changed: false, message: "already patched" };
+		else {
+			const t = insertStableGap(buf);
+			r = t.hit === 1 ? { ok: true, changed: true, message: "patched", content: t.content } : { ok: false, changed: false, message: `expected 1 anchor, got ${t.hit} — pi version changed? Refusing to guess.` };
+		}
+	} else {
+		if (!buf.includes(MARKER_GAP)) r = { ok: true, changed: false, message: "not patched (nothing to revert)" };
+		else {
+			const t = removeStableGap(buf);
+			r = t.hit === 1 ? { ok: true, changed: true, message: "reverted", content: t.content } : { ok: false, changed: false, message: "stable-gap state not recognized — refusing to guess." };
+		}
+	}
+	if (!r.ok) {
+		console.error(`✗ interactive-mode.js: ${r.message}`);
+		ok = false;
+	} else {
+		if (r.changed) {
+			writeFileSync(interactiveFile, r.content);
+			changedAny = true;
+		}
+		console.log(`${r.changed ? "✓" : "="} interactive-mode.js: ${r.message}`);
+	}
+}
+
+if (!ok) process.exit(1);
+if (changedAny) console.log("  Restart pi (not just /reload) for the change to take effect.");

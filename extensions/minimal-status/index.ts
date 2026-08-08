@@ -104,27 +104,16 @@ function makeFooter(theme: Freestyle) {
 			spinner.dispose();
 		},
 		render(width: number): string[] {
-			// Two-cell HUD box, right-aligned at the bottom corner:
-			//   ┌──────────┐
-			//   │ ⠋        │   spinner cell (border persists even when idle)
-			//   ├──────────┤
-			//   │ ~/proj   │   workspace cell
-			//   └──────────┘
-			const avail = Math.max(2, width - 6); // content chars that fit
-			const spinnerStr = active ? spinner.frame() : "";
+			// Plain bottom-right column (no borders): spinner above, workspace below.
+			const avail = Math.max(4, width - 4);
+			const spinnerStr = active ? spinner.frame() : " ";
 			const pathStr = fitTail(workspace, avail);
-			const contentW = Math.max(visibleWidth(spinnerStr), visibleWidth(pathStr), 1) + 2; // 1 space padding each side
-			const inner = contentW + 2; // + side borders
-			const panelW = inner + 2;
-			const leftPad = " ".repeat(Math.max(0, width - panelW));
 
-			const top = "┌" + "─".repeat(inner) + "┐";
-			const sRow = "│ " + theme.fg("accent", spinnerStr.padEnd(contentW - 2)) + " │";
-			const div = "├" + "─".repeat(inner) + "┤";
-			const pRow = "│ " + theme.fg("dim", pathStr.padEnd(contentW - 2)) + " │";
-			const bot = "└" + "─".repeat(inner) + "┘";
+			const spinnerLine = " ".repeat(Math.max(0, width - visibleWidth(spinnerStr))) + theme.fg("accent", spinnerStr);
+			const pathLine = " ".repeat(Math.max(0, width - visibleWidth(pathStr))) + theme.fg("dim", pathStr);
 
-			return [top, sRow, div, pRow, bot].map((l) => leftPad + l);
+			// Two fixed lines → stable layout regardless of activity.
+			return [spinnerLine, pathLine];
 		},
 	};
 }
