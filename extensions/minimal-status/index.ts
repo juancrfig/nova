@@ -44,9 +44,9 @@ import { homedir } from "node:os";
 // Spinner (animated frame owned by the loader box)
 // ---------------------------------------------------------------------------
 
-// Heavier one-cell frames: visually larger than Pi's braille spinner without
-// changing the HUD height.
-const SPINNER_FRAMES = ["◴", "◷", "◶", "◵"];
+// Two-cell frames make the spinner visibly larger without increasing the
+// footer height. The wheel shifts across both cells as it animates.
+const SPINNER_FRAMES = ["◴◷", "◷◶", "◶◵", "◵◴"];
 const SPINNER_MS = 100;
 
 class Spinner {
