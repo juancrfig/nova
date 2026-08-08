@@ -44,9 +44,17 @@ import { homedir } from "node:os";
 // Spinner (animated frame owned by the loader box)
 // ---------------------------------------------------------------------------
 
-// Two-cell frames make the spinner visibly larger without increasing the
-// footer height. The wheel shifts across both cells as it animates.
-const SPINNER_FRAMES = ["◴◷", "◷◶", "◶◵", "◵◴"];
+// Eleven phase-shifted cells. A trailing space gives each cell a two-column
+// footprint: terminal glyphs cannot be scaled by 42%, so this is the closest
+// stable approximation without increasing the footer height.
+const SPINNER_GLYPHS = ["◴", "◷", "◶", "◵"];
+const SPINNER_CELL_COUNT = 11;
+const SPINNER_FRAMES = Array.from({ length: SPINNER_GLYPHS.length }, (_, frame) =>
+	Array.from({ length: SPINNER_CELL_COUNT }, (_, cell) => {
+		const glyph = SPINNER_GLYPHS[(frame + cell) % SPINNER_GLYPHS.length];
+		return `${glyph} `;
+	}).join(""),
+);
 const SPINNER_MS = 100;
 
 class Spinner {
