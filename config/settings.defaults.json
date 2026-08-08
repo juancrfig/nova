@@ -1,4 +1,8 @@
 {
   "hideThinkingBlock": true,
-  "outputPad": 2
+  "outputPad": 2,
+  "tuiMode": "fullscreen",
+  "terminal": {
+    "clearOnShrink": true
+  }
 }

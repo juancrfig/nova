@@ -6,7 +6,11 @@ preserved** (tool results are still executed and recorded; hiding only affects t
 
 ## What it does
 
-1. **Bottom-right mini HUD (no borders).** Two right-aligned fixed lines at the very bottom corner:
+1. **Fullscreen, clean terminal layout.** Nova enables Pi's fullscreen TUI by default. It starts in an
+   alternate screen, clears the terminal on entry, and docks the editor/footer at the bottom instead
+   of letting the input float in the regular scrollback layout. `terminal.clearOnShrink` is also
+   enabled so rows left behind by shorter renders are cleared.
+2. **Bottom-right mini HUD (no borders).** Two right-aligned fixed lines at the very bottom corner:
    the **spinner** above and the **current workspace path** below. The spinner shows whenever the
    agent is busy (including while writing) and is a quiet placeholder when idle. A fixed two-line
    footer keeps the layout stable → no flicker. Uses `ctx.ui.setFooter` (replaces Pi's built-in footer).
