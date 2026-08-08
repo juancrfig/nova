@@ -19,7 +19,7 @@ nova/
 ├── scripts/             # dev tooling: init.sh (bootstrap), merge-settings.mjs, patch-pi-hidden-thinking.mjs
 ├── config/              # repo config, e.g. settings.defaults.json (init merges these)
 ├── extensions/          # pi extension modules Nova ships (the update-safe user layer)
-│   └── minimal-status/   # quiet terminal: Working/Waiting status; hides tool output
+│   └── minimal-status/   # quiet terminal: bottom-right spinner box; hides tool output
 ├── dashboard/           # THE PIPES ROOM — live observability/control of provider payloads
 │   ├── AGENTS.md        # working agreement for the Dashboard
 │   ├── CONTEXT.md       # Dashboard glossary (payload, injectable, capture log, …)

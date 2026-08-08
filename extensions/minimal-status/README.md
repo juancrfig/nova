@@ -6,11 +6,12 @@ preserved** (tool results are still executed and recorded; hiding only affects t
 
 ## What it does
 
-1. **Status — two labels, Pi's default spinner:**
-   - `Working` — at least one tool is executing
-   - `Waiting` — the run is active and there's nothing else to do right now
-   - While a response is actually rendering on screen, **no indicator is shown** — you can see it
-     being written. Idle → nothing.
+1. **Loader box — bottom-right corner.** A small box `[...]` pinned to the bottom-right of the
+   terminal with an animated Pi-style spinner. It's visible whenever the agent is busy (you're
+   waiting), **including while the answer is being written**. When idle it's a stable empty line.
+   Uses a fixed one-line custom footer (`ctx.ui.setFooter`), so nothing appears/disappears → **no
+   layout shift / no flicker**. (Trade-off: it replaces Pi's built-in footer, so pwd/token/model
+   info isn't shown.)
 2. **Hide tool output** — blanks the transcript renderer of the built-in tools (`bash`, `read`,
    `edit`, `write`, `grep`, `find`, `ls`) while **reusing Pi's real `execute`** (via the exported
    `create*Tool` factories), so tools behave identically — only what the transcript shows changes.
@@ -33,7 +34,7 @@ node scripts/patch-pi-hidden-thinking.mjs --revert  # undo
 
 ```bash
 ln -s "$PWD/extensions/minimal-status" ~/.pi/agent/extensions/minimal-status
-# then /reload in Pi
+# then /reload in Pi (or restart: the pi patch needs a restart, not just /reload)
 ```
 
 ## Notes / trade-offs
@@ -42,5 +43,5 @@ ln -s "$PWD/extensions/minimal-status" ~/.pi/agent/extensions/minimal-status
   "overridden built-in tool" note.
 - `createBashTool(cwd)` uses Pi's default local bash (default shell) — matches Pi's defaults unless
   your setup customizes bash (custom shell path, sandboxed operations).
-- "Waiting" shows in active gaps (between turns/tools) and keys off queued follow-up work being
-  done; a future background-task extension can push a precise `Waiting` when needed.
+- The custom footer replaces the built-in one. If you want a dim model name on the left (keeping
+  the corner box on the right), that's a small addition — say the word.

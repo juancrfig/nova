@@ -1,13 +1,13 @@
 /**
  * Minimal status — Nova's "quiet terminal" module.
  *
- * One home for all the "keep the Pi terminal minimal" behavior:
+ * One home for the "keep the Pi terminal minimal" behavior:
  *
- *   1. STATUS — just two labels, both with Pi's default spinner:
- *        Working…  at least one tool is executing
- *        Waiting…  the run is active and there's nothing else to do right now
- *      While the model is actually rendering a message on screen, no indicator
- *      is shown at all (you can see the response being written). Idle → none.
+ *   1. LOADER BOX — a small box pinned to the BOTTOM-RIGHT corner of the terminal
+ *      showing an animated spinner. Visible whenever the agent is busy (the user
+ *      is waiting), including while the answer is being written. Hidden (or
+ *      reduced to a dim line) when idle. A fixed one-line custom footer keeps
+ *      the layout stable — no added/removed blank lines.
  *
  *   2. TOOL OUTPUT — blanks the transcript rendering of built-in tools (call
  *      header + result) while reusing Pi's real execution, so tools still run
@@ -37,72 +37,84 @@ import {
 	createReadTool,
 	createWriteTool,
 } from "@earendil-works/pi-coding-agent";
-import { Container } from "@earendil-works/pi-tui";
+import { Container, visibleWidth } from "@earendil-works/pi-tui";
 
 // ---------------------------------------------------------------------------
-// Status
+// Spinner (animated frame owned by the loader box)
 // ---------------------------------------------------------------------------
 
-// "none" = show no status indicator (response rendering on screen, or idle).
-type Phase = "working" | "waiting" | "none";
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SPINNER_MS = 100;
 
-const LABEL: Record<"working" | "waiting", string> = {
-	working: "Working",
-	waiting: "Waiting",
-};
+class Spinner {
+	private index = 0;
+	private timer: ReturnType<typeof setInterval> | undefined;
+	// We only animate when idle — a static glyph otherwise keeps the box from
+	// chewing CPU and stops it from "spinning" at the wrong times.
+	animate = false;
 
-/**
- * Tracks the harness phase from Pi lifecycle signals:
- *  - working:   at least one tool executing (counter handles parallel tools)
- *  - none:      an assistant message is streaming on screen (or idle)
- *  - waiting:   run active, no tool, nothing rendering — nothing else to do
- */
-class StatusState {
-	private active = false;
-	private toolCount = 0;
-	private generating = false;
-
-	beginRun(): void {
-		this.active = true;
+	start(): void {
+		this.animate = true;
+		if (!this.timer) {
+			this.timer = setInterval(() => {
+				this.index = (this.index + 1) % SPINNER_FRAMES.length;
+				this.ping?.();
+			}, SPINNER_MS);
+		}
 	}
-	endRun(): void {
-		this.active = false;
-		this.toolCount = 0;
-		this.generating = false;
+	stop(): void {
+		this.animate = false;
+		if (this.timer) {
+			clearInterval(this.timer);
+			this.timer = undefined;
+		}
 	}
-	toolStart(): void {
-		this.toolCount++;
+	dispose(): void {
+		this.stop();
 	}
-	toolEnd(): void {
-		this.toolCount = Math.max(0, this.toolCount - 1);
+	frame(): string {
+		return SPINNER_FRAMES[this.index] ?? "";
 	}
-	setGenerating(value: boolean): void {
-		this.generating = value;
-	}
-
-	phase(): Phase {
-		if (this.toolCount > 0) return "working";
-		if (this.generating) return "none"; // response is rendering on screen
-		if (this.active) return "waiting";
-		return "none";
-	}
-}
-
-function applyPhase(ctx: ExtensionContext, phase: Phase): void {
-	if (phase === "none") {
-		ctx.ui.setWorkingVisible(false);
-		return;
-	}
-	ctx.ui.setWorkingVisible(true);
-	ctx.ui.setWorkingMessage(LABEL[phase]);
-	ctx.ui.setWorkingIndicator(undefined); // undefined → Pi's default spinner
+	/** Hook for re-rendering whenever the frame advances. */
+	ping: (() => void) | undefined;
 }
 
 // ---------------------------------------------------------------------------
-// Hide tool output (reuse Pi's real execution; blank the renderers)
+// Footer (the bottom-right loader box)
 // ---------------------------------------------------------------------------
 
-// Flip to false to stop blanking tool output.
+const spinner = new Spinner();
+let active = false; // agent is busy → spinner visible
+
+type Freestyle = any;
+
+function makeFooter() {
+	return {
+		invalidate() {},
+		dispose() {
+			spinner.dispose();
+		},
+		render(width: number): string[] {
+			// A single, always-present line keeps the layout stable.
+			if (!active) {
+				return [""];
+			}
+			const box = `[${spinner.frame()}]`;
+			const pad = " ".repeat(Math.max(0, width - visibleWidth(box)));
+			return [pad + box];
+		},
+	};
+}
+
+function setFooterFor(ctx: ExtensionContext, tui: Freestyle): void {
+	spinner.ping = () => tui?.requestRender?.();
+	ctx.ui.setFooter(() => makeFooter());
+}
+
+// ---------------------------------------------------------------------------
+// Tool output hiding (reuse Pi's real execution; blank the renderers)
+// ---------------------------------------------------------------------------
+
 const HIDE_TOOLS = true;
 
 function registerToolHiding(pi: ExtensionAPI, cwd: string): void {
@@ -127,48 +139,34 @@ function registerToolHiding(pi: ExtensionAPI, cwd: string): void {
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
-	const state = new StatusState();
-
-	const decide = (ctx: ExtensionContext) => applyPhase(ctx, state.phase());
+	// We replace the built-in working loader entirely with our own corner box, so
+	// hide it to stop it appearing/disappearing (the source of the layout shift).
+	const hideBuiltinLoader = (ctx: ExtensionContext) => {
+		ctx.ui.setWorkingMessage(undefined);
+		ctx.ui.setWorkingIndicator(undefined);
+		ctx.ui.setWorkingVisible(false);
+	};
 
 	pi.on("session_start", async (_event, ctx) => {
-		state.endRun();
+		active = false;
+		spinner.stop();
+		hideBuiltinLoader(ctx);
 		registerToolHiding(pi, ctx.cwd);
-		applyPhase(ctx, "none");
+		ctx.ui.setFooter((tui) => {
+			// Capture the TUI so the spinner tick can re-render the footer.
+			spinner.ping = () => tui.requestRender?.();
+			return makeFooter();
+		});
 	});
 
-	pi.on("before_agent_start", async (_event, ctx) => {
-		state.beginRun();
-		decide(ctx);
-	});
+	const setBusy = (ctx: ExtensionContext, busy: boolean) => {
+		if (active === busy) return;
+		active = busy;
+		if (busy) spinner.start();
+		else spinner.stop();
+		spinner.ping?.();
+	};
 
-	// Assistant message streaming on screen → hide the indicator.
-	pi.on("message_start", async (event, ctx) => {
-		if (event.message?.role === "assistant") {
-			state.setGenerating(true);
-			decide(ctx);
-		}
-	});
-	pi.on("message_end", async (event, ctx) => {
-		if (event.message?.role === "assistant") {
-			state.setGenerating(false);
-			decide(ctx);
-		}
-	});
-
-	pi.on("tool_execution_start", async (_event, ctx) => {
-		state.toolStart();
-		decide(ctx);
-	});
-	pi.on("tool_execution_end", async (_event, ctx) => {
-		state.toolEnd();
-		decide(ctx);
-	});
-
-	pi.on("turn_end", async (_event, ctx) => decide(ctx));
-
-	pi.on("agent_settled", async (_event, ctx) => {
-		state.endRun();
-		applyPhase(ctx, "none");
-	});
+	pi.on("before_agent_start", async (_event, ctx) => setBusy(ctx, true));
+	pi.on("agent_settled", async (_event, ctx) => setBusy(ctx, false));
 }

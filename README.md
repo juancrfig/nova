@@ -12,7 +12,7 @@ own surface becomes a room.
 
 | Extension | What it is |
 | --------- | ---------- |
-| `extensions/minimal-status/` | Quiet terminal — Working/Waiting status; hides tool output |
+| `extensions/minimal-status/` | Quiet terminal — bottom-right spinner box; hides tool output |
 
 ## Rooms
 
