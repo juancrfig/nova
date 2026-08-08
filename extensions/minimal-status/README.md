@@ -6,20 +6,28 @@ preserved** (tool results are still executed and recorded; hiding only affects t
 
 ## What it does
 
-1. **Status labels** — an animated (Pi's default-spinner) status that says what the harness is doing:
-   - `Thinking` — the model is generating/reasoning
+1. **Status — two labels, Pi's default spinner:**
    - `Working` — at least one tool is executing
-   - `Waiting` — the run is active with queued follow-up work and nothing else to do right now
-   - (idle → Pi's normal empty status)
+   - `Waiting` — the run is active and there's nothing else to do right now
+   - While a response is actually rendering on screen, **no indicator is shown** — you can see it
+     being written. Idle → nothing.
 2. **Hide tool output** — blanks the transcript renderer of the built-in tools (`bash`, `read`,
    `edit`, `write`, `grep`, `find`, `ls`) while **reusing Pi's real `execute`** (via the exported
    `create*Tool` factories), so tools behave identically — only what the transcript shows changes.
    Flip `HIDE_TOOLS` to `false` to turn this off.
-3. **Silence hidden-thinking placeholder** — when `hideThinkingBlock` is on, Pi shows an italic
-   `Thinking...` placeholder in the transcript; this blanks it so it doesn't duplicate the status.
-   The `hideThinkingBlock` setting itself lives in `config/settings.defaults.json` (applied by
-   `scripts/init.sh`) — they are two halves of the same "hide reasoning display" decision,
-   intentionally kept together here.
+
+## The reasoning placeholder (blank line)
+
+The blank "hidden thinking" row comes from Pi's `hideThinkingBlock: true`, which renders a
+placeholder row for hidden reasoning. That row is removed by a **separate, re-applicable patch**:
+`scripts/patch-pi-hidden-thinking.mjs` (an admitted exception to the "never touch pi" rule). It
+keeps `hideThinkingBlock: true` (reasoning used but not shown) and deletes the placeholder row, so
+no blank line appears. Re-run it after any pi update:
+
+```bash
+node scripts/patch-pi-hidden-thinking.mjs        # apply
+node scripts/patch-pi-hidden-thinking.mjs --revert  # undo
+```
 
 ## Install
 
@@ -33,7 +41,6 @@ ln -s "$PWD/extensions/minimal-status" ~/.pi/agent/extensions/minimal-status
 - Hiding a built-in tool means registering a same-named override; Pi prints a one-time
   "overridden built-in tool" note.
 - `createBashTool(cwd)` uses Pi's default local bash (default shell) — matches Pi's defaults unless
-  your setup customizes bash (custom shell path, sandboxed operations). If that matters, the hiding
-  can be scoped to the tools you actually want quiet.
-- "Waiting" keys off queued follow-up messages (`ctx.hasPendingMessages()`). It covers the native
-  "work pending" case; a future background-task extension can push a precise `Waiting` when needed.
+  your setup customizes bash (custom shell path, sandboxed operations).
+- "Waiting" shows in active gaps (between turns/tools) and keys off queued follow-up work being
+  done; a future background-task extension can push a precise `Waiting` when needed.

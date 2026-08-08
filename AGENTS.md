@@ -16,10 +16,10 @@ nova/
 ├── README.md            # orientation: what Nova is, current state, how to run things
 ├── LICENSE
 ├── IDEAS.md             # open ideas for the Nova harness
-├── scripts/             # dev tooling: init.sh (bootstrap a machine), merge-settings.mjs
+├── scripts/             # dev tooling: init.sh (bootstrap), merge-settings.mjs, patch-pi-hidden-thinking.mjs
 ├── config/              # repo config, e.g. settings.defaults.json (init merges these)
 ├── extensions/          # pi extension modules Nova ships (the update-safe user layer)
-│   └── minimal-status/   # quiet terminal: Thinking/Working/Waiting status, hides tool output │   └── minimal-status/   # quiet terminal: Thinking/Working/Waiting, hides tool output & reasoning reasoning
+│   └── minimal-status/   # quiet terminal: Working/Waiting status; hides tool output
 ├── dashboard/           # THE PIPES ROOM — live observability/control of provider payloads
 │   ├── AGENTS.md        # working agreement for the Dashboard
 │   ├── CONTEXT.md       # Dashboard glossary (payload, injectable, capture log, …)

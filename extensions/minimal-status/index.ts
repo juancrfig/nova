@@ -3,26 +3,25 @@
  *
  * One home for all the "keep the Pi terminal minimal" behavior:
  *
- *   1. STATUS LABELS — an animated (default-spinner) status that reads what the
- *      harness is doing:
- *        Thinking…  the model is generating/reasoning
- *        Working…   at least one tool is executing
- *        Waiting…   the run is active with queued follow-up work, nothing else
- *                   to do right now
- *      (falls back to idle → Pi's normal empty status)
+ *   1. STATUS — just two labels, both with Pi's default spinner:
+ *        Working…  at least one tool is executing
+ *        Waiting…  the run is active and there's nothing else to do right now
+ *      While the model is actually rendering a message on screen, no indicator
+ *      is shown at all (you can see the response being written). Idle → none.
  *
  *   2. TOOL OUTPUT — blanks the transcript rendering of built-in tools (call
  *      header + result) while reusing Pi's real execution, so tools still run
- *      exactly as before and their results are still recorded/logged (see
- *      "Observability is a Nova principle"). Set HIDE_TOOLS=false to disable.
+ *      exactly as before and results are still recorded/logged. Flip
+ *      HIDE_TOOLS=false to disable.
  *
- *   3. HIDDEN THINKING — silences Pi's italic "Thinking..." placeholder that
- *      appears when hideThinkingBlock is on, so it doesn't duplicate the
- *      spinner's "Thinking". The hideThinkingBlock setting itself lives in
- *      config/settings.defaults.json (applied by scripts/init.sh).
+ * Purely presentational: never changes the session, the model context, or any
+ * captured/logged data — observability is preserved.
  *
- * This module is purely presentational: it never changes the session, the
- * model context, or any captured/logged data.
+ * About the reasoning placeholder: Pi's hideThinkingBlock draws a blank
+ * placeholder row for hidden reasoning. That row is removed by the separate,
+ * re-applicable patch in scripts/patch-pi-hidden-thinking.mjs (an admitted
+ * exception to the "never touch pi" rule). config/settings.defaults.json sets
+ * hideThinkingBlock:true so reasoning is used but not shown.
  *
  * Install: symlink into Pi's user extensions dir, then /reload:
  *   ln -s "$PWD/extensions/minimal-status" ~/.pi/agent/extensions/minimal-status
@@ -41,27 +40,27 @@ import {
 import { Container } from "@earendil-works/pi-tui";
 
 // ---------------------------------------------------------------------------
-// 1. Status labels
+// Status
 // ---------------------------------------------------------------------------
 
-type Phase = "thinking" | "working" | "waiting" | "idle";
+// "none" = show no status indicator (response rendering on screen, or idle).
+type Phase = "working" | "waiting" | "none";
 
-const PHASE_LABEL: Record<Exclude<Phase, "idle">, string> = {
-	thinking: "Thinking",
+const LABEL: Record<"working" | "waiting", string> = {
 	working: "Working",
 	waiting: "Waiting",
 };
 
 /**
- * Tracks the harness phase from Pi lifecycle signals.
- *  - working: at least one tool executing (counter handles parallel tools)
- *  - waiting: run active, no tools, but queued follow-up work is pending
- *  - thinking: run active, no tools, no pending work
- *  - idle: no active run
+ * Tracks the harness phase from Pi lifecycle signals:
+ *  - working:   at least one tool executing (counter handles parallel tools)
+ *  - none:      an assistant message is streaming on screen (or idle)
+ *  - waiting:   run active, no tool, nothing rendering — nothing else to do
  */
 class StatusState {
 	private active = false;
 	private toolCount = 0;
+	private generating = false;
 
 	beginRun(): void {
 		this.active = true;
@@ -69,6 +68,7 @@ class StatusState {
 	endRun(): void {
 		this.active = false;
 		this.toolCount = 0;
+		this.generating = false;
 	}
 	toolStart(): void {
 		this.toolCount++;
@@ -76,26 +76,30 @@ class StatusState {
 	toolEnd(): void {
 		this.toolCount = Math.max(0, this.toolCount - 1);
 	}
-	phase(pending: boolean): Phase {
+	setGenerating(value: boolean): void {
+		this.generating = value;
+	}
+
+	phase(): Phase {
 		if (this.toolCount > 0) return "working";
-		if (!this.active) return "idle";
-		if (pending) return "waiting";
-		return "thinking";
+		if (this.generating) return "none"; // response is rendering on screen
+		if (this.active) return "waiting";
+		return "none";
 	}
 }
 
 function applyPhase(ctx: ExtensionContext, phase: Phase): void {
-	if (phase === "idle") {
-		ctx.ui.setWorkingMessage(undefined);
-		ctx.ui.setWorkingIndicator(undefined);
+	if (phase === "none") {
+		ctx.ui.setWorkingVisible(false);
 		return;
 	}
-	ctx.ui.setWorkingMessage(PHASE_LABEL[phase]);
+	ctx.ui.setWorkingVisible(true);
+	ctx.ui.setWorkingMessage(LABEL[phase]);
 	ctx.ui.setWorkingIndicator(undefined); // undefined → Pi's default spinner
 }
 
 // ---------------------------------------------------------------------------
-// 2. Hide tool output (reuse Pi's real execution; blank the renderers)
+// Hide tool output (reuse Pi's real execution; blank the renderers)
 // ---------------------------------------------------------------------------
 
 // Flip to false to stop blanking tool output.
@@ -119,53 +123,52 @@ function registerToolHiding(pi: ExtensionAPI, cwd: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Hidden-thinking placeholder (paired with hideThinkingBlock in settings)
-// ---------------------------------------------------------------------------
-
-// A subtle marker where the hidden reasoning was. Pi always reserves a row for
-// the hidden-thinking placeholder, so an empty string just leaves a blank line.
-// Use "·" (or "…"/"(reasoning)") so that row reads as a quiet indicator instead
-// of a whitespace gap. Set to "" only if you accept the blank line.
-const HIDDEN_THINKING_LABEL = "·";
-
-// ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
 
 export default function (pi: ExtensionAPI) {
 	const state = new StatusState();
 
-	const decide = (ctx: ExtensionContext) => applyPhase(ctx, state.phase(ctx.hasPendingMessages()));
+	const decide = (ctx: ExtensionContext) => applyPhase(ctx, state.phase());
 
 	pi.on("session_start", async (_event, ctx) => {
 		state.endRun();
-		ctx.ui.setHiddenThinkingLabel(HIDDEN_THINKING_LABEL);
 		registerToolHiding(pi, ctx.cwd);
-		applyPhase(ctx, "idle");
+		applyPhase(ctx, "none");
 	});
 
 	pi.on("before_agent_start", async (_event, ctx) => {
-		ctx.ui.setHiddenThinkingLabel(HIDDEN_THINKING_LABEL);
 		state.beginRun();
 		decide(ctx);
+	});
+
+	// Assistant message streaming on screen → hide the indicator.
+	pi.on("message_start", async (event, ctx) => {
+		if (event.message?.role === "assistant") {
+			state.setGenerating(true);
+			decide(ctx);
+		}
+	});
+	pi.on("message_end", async (event, ctx) => {
+		if (event.message?.role === "assistant") {
+			state.setGenerating(false);
+			decide(ctx);
+		}
 	});
 
 	pi.on("tool_execution_start", async (_event, ctx) => {
 		state.toolStart();
 		decide(ctx);
 	});
-
 	pi.on("tool_execution_end", async (_event, ctx) => {
 		state.toolEnd();
 		decide(ctx);
 	});
 
-	// A turn finished: if follow-up work is queued we're "waiting", otherwise
-	// the run continues "thinking".
 	pi.on("turn_end", async (_event, ctx) => decide(ctx));
 
 	pi.on("agent_settled", async (_event, ctx) => {
 		state.endRun();
-		applyPhase(ctx, "idle");
+		applyPhase(ctx, "none");
 	});
 }
