@@ -122,9 +122,11 @@ function registerToolHiding(pi: ExtensionAPI, cwd: string): void {
 // 3. Hidden-thinking placeholder (paired with hideThinkingBlock in settings)
 // ---------------------------------------------------------------------------
 
-// Leave empty so the spinner's "Thinking" is the only one. For a subtle marker
-// instead, use e.g. "·", "…", or "(reasoning hidden)".
-const HIDDEN_THINKING_LABEL = "";
+// A subtle marker where the hidden reasoning was. Pi always reserves a row for
+// the hidden-thinking placeholder, so an empty string just leaves a blank line.
+// Use "·" (or "…"/"(reasoning)") so that row reads as a quiet indicator instead
+// of a whitespace gap. Set to "" only if you accept the blank line.
+const HIDDEN_THINKING_LABEL = "·";
 
 // ---------------------------------------------------------------------------
 // Extension
