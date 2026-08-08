@@ -39,9 +39,9 @@ ln -s "$PWD/extensions/minimal-status" ~/.pi/agent/extensions/minimal-status
 ## Notes / trade-offs
 
 - The custom HUD footer replaces the built-in footer (pwd/token/model info isn't shown).
-- **No vertical gap between messages**: the patch removes Pi's internal leading blank line above
-  each assistant reply, and does not add a replacement spacer. Breathing room comes from the
-  `outputPad` setting, set to `2` (see `config/settings.defaults.json`).
+- **Stable message margin**: Pi's internal assistant spacer is removed, and one separator is added
+  immediately after the user message. The margin is present from message start and does not appear
+  later when the first assistant token arrives. Horizontal breathing room comes from `outputPad: 2`.
 - Hiding a built-in tool means registering a same-named override; Pi prints a one-time
   "overridden built-in tool" note.
 - `createBashTool(cwd)` uses Pi's default local bash (default shell) — matches Pi's defaults unless

@@ -41,6 +41,43 @@ const PLACEHOLDER_COMMENT = `// ${MARKER} placeholder removed so no blank line a
 
 const SPACER_IF = "if (hasVisibleContentAfter) {";
 const SPACER_IF_PATCHED = "if (!this.hideThinkingBlock && hasVisibleContentAfter) {";
+const MARKER_USER_GAP = "[Nova user-gap patch]";
+
+function insertUserGap(buf) {
+	const lines = buf.split("\n");
+	const out = [];
+	let hit = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (
+			lines[i].trim() === "this.addMessageToChat(event.message);" &&
+			(lines[i + 1] ?? "").includes("this.updatePendingMessagesDisplay();")
+		) {
+			const indent = /^(\s*)/.exec(lines[i])[1];
+			out.push(lines[i]);
+			out.push(`${indent}// ${MARKER_USER_GAP} stable margin after user message`);
+			out.push(`${indent}this.chatContainer.addChild(new Spacer(1));`);
+			hit++;
+		} else {
+			out.push(lines[i]);
+		}
+	}
+	return { content: out.join("\n"), hit };
+}
+
+function removeUserGap(buf) {
+	const lines = buf.split("\n");
+	const out = [];
+	let hit = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i].includes(MARKER_USER_GAP)) {
+			hit++;
+			if ((lines[i + 1] ?? "").trim() === "this.chatContainer.addChild(new Spacer(1));") i++;
+			continue;
+		}
+		out.push(lines[i]);
+	}
+	return { content: out.join("\n"), hit };
+}
 
 // The leading blank line Pi puts above every assistant message (`Spacer(1)`
 // guarded by `if (hasVisibleContent)`). Removed so replies start at the top and
@@ -191,6 +228,7 @@ if (!root) {
 }
 
 const assistantFile = join(root, "dist", "modes", "interactive", "components", "assistant-message.js");
+const interactiveFile = join(root, "dist", "modes", "interactive", "interactive-mode.js");
 console.log(`pi root: ${root}`);
 
 let ok = true;
@@ -209,6 +247,39 @@ let changedAny = false;
 			changedAny = true;
 		}
 		console.log(`${r.changed ? "✓" : "="} assistant-message.js: ${r.message}`);
+	}
+}
+
+// --- interactive-mode.js (stable margin after the user message) ---
+{
+	const buf = readFileSync(interactiveFile, "utf8");
+	let r;
+	if (mode === "apply") {
+		if (buf.includes(MARKER_USER_GAP)) {
+			r = { ok: true, changed: false, message: "already patched" };
+		} else {
+			const t = insertUserGap(buf);
+			r = t.hit === 1
+				? { ok: true, changed: true, message: "patched", content: t.content }
+				: { ok: false, changed: false, message: `expected 1 user-message anchor, got ${t.hit} — pi version changed? Refusing to guess.` };
+		}
+	} else if (!buf.includes(MARKER_USER_GAP)) {
+		r = { ok: true, changed: false, message: "not patched (nothing to revert)" };
+	} else {
+		const t = removeUserGap(buf);
+		r = t.hit === 1
+			? { ok: true, changed: true, message: "reverted", content: t.content }
+			: { ok: false, changed: false, message: "user-gap state not recognized — refusing to guess." };
+	}
+	if (!r.ok) {
+		console.error(`✗ interactive-mode.js: ${r.message}`);
+		ok = false;
+	} else {
+		if (r.changed) {
+			writeFileSync(interactiveFile, r.content);
+			changedAny = true;
+		}
+		console.log(`${r.changed ? "✓" : "="} interactive-mode.js: ${r.message}`);
 	}
 }
 
