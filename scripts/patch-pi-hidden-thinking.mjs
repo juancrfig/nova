@@ -6,8 +6,8 @@
  *      (hideThinkingBlock) — keeps thinking enabled + reasoning hidden,
  *      without an empty line;
  *   2. removes the leading blank line Pi puts above every assistant message, so
- *      replies start at the top (no whitespace "appears" as text streams in).
- *      Horizontal margin is instead provided by the outputPad setting.
+ *      replies start right at the top (no whitespace "appears" after your
+ *      message). Horizontal spacing is instead provided by the outputPad setting.
  *
  * This is an ADMITTED exception to Nova's "never touch pi" rule: it edits pi's
  * installed, compiled renderer, so it is overwritten on the next pi update and
@@ -41,6 +41,41 @@ const PLACEHOLDER_COMMENT = `// ${MARKER} placeholder removed so no blank line a
 
 const SPACER_IF = "if (hasVisibleContentAfter) {";
 const SPACER_IF_PATCHED = "if (!this.hideThinkingBlock && hasVisibleContentAfter) {";
+const MARKER_GAP = "[Nova stable-gap patch]";
+
+function insertStableGap(buf) {
+	const lines = buf.split("\n");
+	const out = [];
+	let hit = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (
+			lines[i].trim() === "this.chatContainer.addChild(this.streamingComponent);" &&
+			(lines[i + 1] ?? "").includes("updateContent(this.streamingMessage, true)")
+		) {
+			const indent = /^(\s*)/.exec(lines[i])[1];
+			out.push(`${indent}// ${MARKER_GAP} stable gap before assistant message`);
+			out.push(`${indent}this.chatContainer.addChild(new Spacer(1));`);
+			hit++;
+		}
+		out.push(lines[i]);
+	}
+	return { content: out.join("\n"), hit };
+}
+
+function removeStableGap(buf) {
+	const lines = buf.split("\n");
+	const out = [];
+	let hit = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (lines[i].includes(MARKER_GAP)) {
+			hit++;
+			if ((lines[i + 1] ?? "").trim() === "this.chatContainer.addChild(new Spacer(1));") i++;
+			continue;
+		}
+		out.push(lines[i]);
+	}
+	return { content: out.join("\n"), hit };
+}
 
 // The leading blank line Pi puts above every assistant message (`Spacer(1)`
 // guarded by `if (hasVisibleContent)`). Removed so replies start at the top and
@@ -90,44 +125,6 @@ function restoreLeadSpacer(buf) {
 		}
 	}
 	return { content: lines.join("\n"), hit };
-}
-
-const MARKER_GAP = "[Nova stable-gap patch]";
-
-/** Insert one stable blank line before the assistant message (streaming start). */
-function insertStableGap(buf) {
-	const lines = buf.split("\n");
-	const out = [];
-	let hit = 0;
-	for (let i = 0; i < lines.length; i++) {
-		if (
-			lines[i].trim() === "this.chatContainer.addChild(this.streamingComponent);" &&
-			(lines[i + 1] ?? "").includes("updateContent(this.streamingMessage, true)")
-		) {
-			const indent = /^(\s*)/.exec(lines[i])[1];
-			out.push(`${indent}// ${MARKER_GAP} stable gap before assistant message`);
-			out.push(`${indent}this.chatContainer.addChild(new Spacer(1));`);
-			hit++;
-		}
-		out.push(lines[i]);
-	}
-	return { content: out.join("\n"), hit };
-}
-
-/** Remove the stable gap line (revert). */
-function removeStableGap(buf) {
-	const lines = buf.split("\n");
-	const out = [];
-	let hit = 0;
-	for (let i = 0; i < lines.length; i++) {
-		if (lines[i].includes(MARKER_GAP)) {
-			hit = 1;
-			if ((lines[i + 1] ?? "").trim() === "this.chatContainer.addChild(new Spacer(1));") i++;
-			continue;
-		}
-		out.push(lines[i]);
-	}
-	return { content: out.join("\n"), hit };
 }
 
 /** Replace any whole line containing `needle`, preserving its indentation. */
@@ -235,7 +232,7 @@ console.log(`pi root: ${root}`);
 let ok = true;
 let changedAny = false;
 
-// --- assistant-message.js (reasoning placeholder + leading blank) ---
+// --- assistant-message.js (reasoning placeholder + internal leading blank) ---
 {
 	const buf = readFileSync(assistantFile, "utf8");
 	const r = mode === "apply" ? applyPatch(buf) : revertPatch(buf);
@@ -251,22 +248,26 @@ let changedAny = false;
 	}
 }
 
-// --- interactive-mode.js (stable gap before assistant message) ---
+// --- interactive-mode.js (one stable separator at message start) ---
 {
 	const buf = readFileSync(interactiveFile, "utf8");
 	let r;
 	if (mode === "apply") {
-		if (buf.includes(MARKER_GAP)) r = { ok: true, changed: false, message: "already patched" };
-		else {
+		if (buf.includes(MARKER_GAP)) {
+			r = { ok: true, changed: false, message: "already patched" };
+		} else {
 			const t = insertStableGap(buf);
-			r = t.hit === 1 ? { ok: true, changed: true, message: "patched", content: t.content } : { ok: false, changed: false, message: `expected 1 anchor, got ${t.hit} — pi version changed? Refusing to guess.` };
+			r = t.hit === 1
+				? { ok: true, changed: true, message: "patched", content: t.content }
+				: { ok: false, changed: false, message: `expected 1 anchor, got ${t.hit} — pi version changed? Refusing to guess.` };
 		}
+	} else if (!buf.includes(MARKER_GAP)) {
+		r = { ok: true, changed: false, message: "not patched (nothing to revert)" };
 	} else {
-		if (!buf.includes(MARKER_GAP)) r = { ok: true, changed: false, message: "not patched (nothing to revert)" };
-		else {
-			const t = removeStableGap(buf);
-			r = t.hit === 1 ? { ok: true, changed: true, message: "reverted", content: t.content } : { ok: false, changed: false, message: "stable-gap state not recognized — refusing to guess." };
-		}
+		const t = removeStableGap(buf);
+		r = t.hit === 1
+			? { ok: true, changed: true, message: "reverted", content: t.content }
+			: { ok: false, changed: false, message: "stable-gap state not recognized — refusing to guess." };
 	}
 	if (!r.ok) {
 		console.error(`✗ interactive-mode.js: ${r.message}`);

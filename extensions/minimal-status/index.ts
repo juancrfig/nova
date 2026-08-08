@@ -38,6 +38,7 @@ import {
 	createWriteTool,
 } from "@earendil-works/pi-coding-agent";
 import { Container, visibleWidth } from "@earendil-works/pi-tui";
+import { homedir } from "node:os";
 
 // ---------------------------------------------------------------------------
 // Spinner (animated frame owned by the loader box)
@@ -95,6 +96,14 @@ function fitTail(text: string, width: number): string {
 	return "…" + text.slice(-cut);
 }
 
+// Replace the home prefix with "~" for a shorter path.
+const HOME = homedir();
+function prettyPath(p: string): string {
+	if (p === HOME) return "~";
+	if (p.startsWith(HOME + "/")) return "~" + p.slice(HOME.length);
+	return p;
+}
+
 type Freestyle = any;
 
 function makeFooter(theme: Freestyle) {
@@ -104,15 +113,16 @@ function makeFooter(theme: Freestyle) {
 			spinner.dispose();
 		},
 		render(width: number): string[] {
-			// Plain bottom-right column (no borders): spinner above, workspace below.
+			// Bottom-right column: spinner above, workspace pinned to the very
+			// bottom line (path is always the last row).
 			const avail = Math.max(4, width - 4);
 			const spinnerStr = active ? spinner.frame() : " ";
-			const pathStr = fitTail(workspace, avail);
+			const pathStr = fitTail(prettyPath(workspace), avail);
 
 			const spinnerLine = " ".repeat(Math.max(0, width - visibleWidth(spinnerStr))) + theme.fg("accent", spinnerStr);
 			const pathLine = " ".repeat(Math.max(0, width - visibleWidth(pathStr))) + theme.fg("dim", pathStr);
 
-			// Two fixed lines → stable layout regardless of activity.
+			// Two fixed lines → stable layout regardless of activity. Path is last.
 			return [spinnerLine, pathLine];
 		},
 	};
